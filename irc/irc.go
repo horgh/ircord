@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -164,6 +165,9 @@ func (c *Client) reader() {
 
 		line, err := c.rw.ReadString('\n')
 		if err != nil {
+			if strings.Contains(err.Error(), "i/o timeout") {
+				continue
+			}
 			log.Printf("%s", errors.Wrap(err, "error reading"))
 			// XXX send event so we reconnect
 			return
