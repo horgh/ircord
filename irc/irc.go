@@ -84,6 +84,7 @@ func (c *Client) run() {
 					Command: "QUIT",
 					Params:  e.args,
 				}
+				return
 			}
 		case m, ok := <-conn.readChan:
 			if !ok {
