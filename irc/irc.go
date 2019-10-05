@@ -63,15 +63,6 @@ func (c *Client) Start() error {
 		return err
 	}
 
-	c.writeChan <- irc.Message{
-		Command: "NICK",
-		Params:  []string{c.nick},
-	}
-	c.writeChan <- irc.Message{
-		Command: "USER",
-		Params:  []string{c.nick, "0", "*", c.nick},
-	}
-
 	c.wg.Add(1)
 	go c.run()
 	return nil
@@ -92,10 +83,21 @@ func (c *Client) connect() error {
 		c.conn = conn
 	}
 	c.rw = bufio.NewReadWriter(bufio.NewReader(c.conn), bufio.NewWriter(c.conn))
+
 	c.wg.Add(1)
 	go c.reader()
 	c.wg.Add(1)
 	go c.writer()
+
+	c.writeChan <- irc.Message{
+		Command: "NICK",
+		Params:  []string{c.nick},
+	}
+	c.writeChan <- irc.Message{
+		Command: "USER",
+		Params:  []string{c.nick, "0", "*", c.nick},
+	}
+
 	return nil
 }
 
