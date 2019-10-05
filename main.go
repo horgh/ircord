@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strings"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
@@ -149,11 +150,11 @@ func (i *ircord) messageCreate(
 	}
 
 	if m.Content != "" {
-		re := regexp.MustCompile(`<@[0-9]+>`)
+		re := regexp.MustCompile(`<@!?[0-9]+>`)
 		content := re.ReplaceAllStringFunc(
 			m.Content,
 			func(ss string) string {
-				id := ss[2 : len(ss)-1]
+				id := strings.Trim(ss, "<@!>")
 				user, ok := i.users[id]
 				if !ok {
 					user2, err := s.User(id)
