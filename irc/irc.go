@@ -150,7 +150,7 @@ func (c *conn) writer() {
 	for {
 		m, ok := <-c.writeChan
 		if !ok {
-			break
+			return
 		}
 
 		buf, err := m.Encode()
