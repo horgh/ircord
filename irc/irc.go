@@ -29,17 +29,17 @@ func New(nick, host string, port int, tls bool) *Client {
 
 // Client is an IRC client.
 type Client struct {
-	conn       net.Conn
-	doneChan   chan struct{}
-	eventChan  chan event
-	handlers   []func(irc.Message)
-	host       string
-	nick       string
-	port       int
-	rw         *bufio.ReadWriter
-	tls        bool
-	wg         sync.WaitGroup
-	writeChan  chan irc.Message
+	conn      net.Conn
+	doneChan  chan struct{}
+	eventChan chan event
+	handlers  []func(irc.Message)
+	host      string
+	nick      string
+	port      int
+	rw        *bufio.ReadWriter
+	tls       bool
+	wg        sync.WaitGroup
+	writeChan chan irc.Message
 }
 
 type event struct {
