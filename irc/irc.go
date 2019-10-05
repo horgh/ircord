@@ -15,37 +15,24 @@ import (
 // New creates a new Client.
 func New(nick, host string, port int, tls bool) *Client {
 	return &Client{
-		eventChan: make(chan event, 100), // 100 is arbitrary.
-		host:      host,
-		nick:      nick,
-		port:      port,
-		tls:       tls,
+		host:        host,
+		messageChan: make(chan irc.Message, 100), // 100 is arbitrary.
+		nick:        nick,
+		port:        port,
+		tls:         tls,
 	}
 }
 
 // Client is an IRC client.
 type Client struct {
-	channels  []string
-	eventChan chan event
-	handlers  []func(irc.Message)
-	host      string
-	nick      string
-	port      int
-	tls       bool
+	channels    []string
+	handlers    []func(irc.Message)
+	host        string
+	messageChan chan irc.Message
+	nick        string
+	port        int
+	tls         bool
 }
-
-type event struct {
-	args []string
-	kind kind
-}
-
-type kind int
-
-const (
-	joinCommand kind = iota
-	messageCommand
-	quitCommand
-)
 
 // Start starts the Client.
 func (c *Client) Start() error {
@@ -67,25 +54,8 @@ func (c *Client) run() {
 		}
 
 		select {
-		case e := <-c.eventChan:
-			switch e.kind {
-			case joinCommand:
-				conn.writeChan <- irc.Message{
-					Command: "JOIN",
-					Params:  []string{e.args[0]},
-				}
-			case messageCommand:
-				conn.writeChan <- irc.Message{
-					Command: "PRIVMSG",
-					Params:  e.args,
-				}
-			case quitCommand:
-				conn.writeChan <- irc.Message{
-					Command: "QUIT",
-					Params:  e.args,
-				}
-				return
-			}
+		case m := <-c.messageChan:
+			conn.writeChan <- m
 		case m, ok := <-conn.readChan:
 			if !ok {
 				close(conn.writeChan)
@@ -205,13 +175,19 @@ func (c *conn) writer() {
 
 // Join tells the Client to join the channel.
 func (c *Client) Join(channel string) {
-	c.eventChan <- event{kind: joinCommand, args: []string{channel}}
+	c.messageChan <- irc.Message{
+		Command: "JOIN",
+		Params:  []string{channel},
+	}
 	c.channels = append(c.channels, channel)
 }
 
 // Message sends a message to the target.
 func (c *Client) Message(to, message string) {
-	c.eventChan <- event{kind: messageCommand, args: []string{to, message}}
+	c.messageChan <- irc.Message{
+		Command: "PRIVMSG",
+		Params:  []string{to, message},
+	}
 }
 
 // AddHandler registers a function to be called on every message the Client
@@ -222,7 +198,10 @@ func (c *Client) AddHandler(f func(irc.Message)) {
 
 // Close cleans up the Client.
 func (c *Client) Close() error {
-	c.eventChan <- event{kind: quitCommand, args: []string{"Bye"}}
+	c.messageChan <- irc.Message{
+		Command: "Quit",
+		Params:  []string{"Bye"},
+	}
 
 	time.Sleep(time.Second) // Let writer send quit
 
