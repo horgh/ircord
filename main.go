@@ -77,7 +77,7 @@ func main() {
 	}
 
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-ch
 
 	if err := s.Close(); err != nil {
