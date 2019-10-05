@@ -35,9 +35,8 @@ type Client struct {
 }
 
 // Start starts the Client.
-func (c *Client) Start() error {
+func (c *Client) Start() {
 	go c.run()
-	return nil
 }
 
 func (c *Client) run() {

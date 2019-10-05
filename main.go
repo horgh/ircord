@@ -64,9 +64,7 @@ func main() {
 
 	ircClient.AddHandler(ircord.ircMessage)
 
-	if err := ircClient.Start(); err != nil {
-		log.Fatalf("%+v", err)
-	}
+	ircClient.Start()
 
 	ircClient.Join(*ircChannel)
 
