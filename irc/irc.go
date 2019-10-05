@@ -55,6 +55,9 @@ func (c *Client) run() {
 		select {
 		case m := <-c.messageChan:
 			conn.writeChan <- m
+			if m.Command == "QUIT" {
+				return
+			}
 		case m, ok := <-conn.readChan:
 			if !ok {
 				close(conn.writeChan)
@@ -196,7 +199,7 @@ func (c *Client) AddHandler(f func(irc.Message)) {
 // Close cleans up the Client.
 func (c *Client) Close() error {
 	c.messageChan <- irc.Message{
-		Command: "Quit",
+		Command: "QUIT",
 		Params:  []string{"Bye"},
 	}
 
