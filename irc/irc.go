@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
 	"github.com/horgh/irc"
 	"github.com/pkg/errors"
@@ -34,6 +35,7 @@ type Client struct {
 	port       int
 	tls        bool
 	registered bool
+	wg         sync.WaitGroup
 	writeChan  chan irc.Message
 }
 
@@ -50,6 +52,7 @@ const (
 	readMessage
 	joinCommand
 	messageCommand
+	quitCommand
 )
 
 // Start starts the Client.
@@ -92,6 +95,9 @@ func (c *Client) connect() error {
 }
 
 func (c *Client) run() {
+	c.wg.Add(1)
+	defer func() { c.wg.Done() }()
+
 	for {
 		e := <-c.eventChan
 
@@ -125,6 +131,15 @@ func (c *Client) run() {
 			}
 			continue
 		}
+
+		if e.kind == quitCommand {
+			c.writeChan <- irc.Message{
+				Command: "QUIT",
+				Params:  e.args,
+			}
+			close(c.writeChan)
+			break
+		}
 	}
 }
 
@@ -148,8 +163,14 @@ func (c *Client) reader() {
 }
 
 func (c *Client) writer() {
+	c.wg.Add(1)
+	defer func() { c.wg.Done() }()
+
 	for {
-		m := <-c.writeChan
+		m, ok := <-c.writeChan
+		if !ok {
+			break
+		}
 
 		buf, err := m.Encode()
 		if err != nil {
@@ -181,6 +202,11 @@ func (c *Client) Message(to, message string) {
 	c.eventChan <- event{kind: messageCommand, args: []string{to, message}}
 }
 
+// Quit tells the client to quit.
+func (c *Client) Quit(reason string) {
+	c.eventChan <- event{kind: quitCommand, args: []string{reason}}
+}
+
 // AddHandler registers a function to be called on every message the Client
 // sees.
 func (c *Client) AddHandler(f func(irc.Message)) {
@@ -189,6 +215,8 @@ func (c *Client) AddHandler(f func(irc.Message)) {
 
 // Close cleans up the Client.
 func (c *Client) Close() error {
+	c.wg.Wait()
+
 	c.registered = false
 	c.rw = nil
 
