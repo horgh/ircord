@@ -71,6 +71,7 @@ func (c *Client) Start() error {
 		Params:  []string{c.nick, "0", "*", c.nick},
 	}
 
+	c.wg.Add(1)
 	go c.run()
 	return nil
 }
@@ -90,13 +91,14 @@ func (c *Client) connect() error {
 		c.conn = conn
 	}
 	c.rw = bufio.NewReadWriter(bufio.NewReader(c.conn), bufio.NewWriter(c.conn))
+	c.wg.Add(1)
 	go c.reader()
+	c.wg.Add(1)
 	go c.writer()
 	return nil
 }
 
 func (c *Client) run() {
-	c.wg.Add(1)
 	defer func() { c.wg.Done() }()
 
 	for {
@@ -145,7 +147,6 @@ func (c *Client) run() {
 }
 
 func (c *Client) reader() {
-	c.wg.Add(1)
 	defer func() { c.wg.Done() }()
 
 	for {
@@ -179,7 +180,6 @@ func (c *Client) reader() {
 }
 
 func (c *Client) writer() {
-	c.wg.Add(1)
 	defer func() { c.wg.Done() }()
 
 	for {
