@@ -18,8 +18,8 @@ func New(nick, host string, port int, tls bool) *Client {
 	return &Client{
 		doneChan:  make(chan struct{}),
 		eventChan: make(chan event, 100), // 100 is arbitrary.
-		nick:      nick,
 		host:      host,
+		nick:      nick,
 		port:      port,
 		tls:       tls,
 		writeChan: make(chan irc.Message, 100), // 100 is arbitrary.
@@ -30,14 +30,14 @@ func New(nick, host string, port int, tls bool) *Client {
 type Client struct {
 	conn       net.Conn
 	doneChan   chan struct{}
-	handlers   []func(irc.Message)
 	eventChan  chan event
-	rw         *bufio.ReadWriter
-	nick       string
+	handlers   []func(irc.Message)
 	host       string
+	nick       string
 	port       int
-	tls        bool
 	registered bool
+	rw         *bufio.ReadWriter
+	tls        bool
 	wg         sync.WaitGroup
 	writeChan  chan irc.Message
 }
