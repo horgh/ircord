@@ -161,13 +161,11 @@ func (c *conn) writer() {
 
 		if _, err := c.rw.WriteString(buf); err != nil {
 			log.Printf("%s", errors.Wrap(err, "error writing"))
-			// XXX send event so we reconnect
 			return
 		}
 
 		if err := c.rw.Flush(); err != nil {
 			log.Printf("%s", errors.Wrap(err, "error flushing"))
-			// XXX send event so we reconnect
 			return
 		}
 	}
