@@ -35,7 +35,6 @@ type Client struct {
 	host       string
 	nick       string
 	port       int
-	registered bool
 	rw         *bufio.ReadWriter
 	tls        bool
 	wg         sync.WaitGroup
@@ -235,7 +234,6 @@ func (c *Client) Close() error {
 	close(c.doneChan)
 	c.wg.Wait()
 
-	c.registered = false
 	c.rw = nil
 
 	if c.conn != nil {
