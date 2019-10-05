@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/horgh/irc"
 	"github.com/pkg/errors"
@@ -15,6 +16,7 @@ import (
 // New creates a new Client.
 func New(nick, host string, port int, tls bool) *Client {
 	return &Client{
+		doneChan:  make(chan struct{}),
 		eventChan: make(chan event, 100), // 100 is arbitrary.
 		nick:      nick,
 		host:      host,
@@ -27,6 +29,7 @@ func New(nick, host string, port int, tls bool) *Client {
 // Client is an IRC client.
 type Client struct {
 	conn       net.Conn
+	doneChan   chan struct{}
 	handlers   []func(irc.Message)
 	eventChan  chan event
 	rw         *bufio.ReadWriter
@@ -144,7 +147,22 @@ func (c *Client) run() {
 }
 
 func (c *Client) reader() {
+	c.wg.Add(1)
+	defer func() { c.wg.Done() }()
+
 	for {
+		select {
+		case <-c.doneChan:
+			return
+		default:
+		}
+
+		if err := c.conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+			log.Printf("%s", errors.Wrap(err, "error setting deadline"))
+			// XXX send event so we reconnect
+			return
+		}
+
 		line, err := c.rw.ReadString('\n')
 		if err != nil {
 			log.Printf("%s", errors.Wrap(err, "error reading"))
@@ -215,6 +233,7 @@ func (c *Client) AddHandler(f func(irc.Message)) {
 
 // Close cleans up the Client.
 func (c *Client) Close() error {
+	close(c.doneChan)
 	c.wg.Wait()
 
 	c.registered = false
