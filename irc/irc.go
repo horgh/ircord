@@ -51,8 +51,7 @@ type event struct {
 type kind int
 
 const (
-	unknown kind = iota
-	readMessage
+	readMessage kind = iota
 	joinCommand
 	messageCommand
 	quitCommand
