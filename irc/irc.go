@@ -218,11 +218,6 @@ func (c *Client) Message(to, message string) {
 	c.eventChan <- event{kind: messageCommand, args: []string{to, message}}
 }
 
-// Quit tells the client to quit.
-func (c *Client) Quit(reason string) {
-	c.eventChan <- event{kind: quitCommand, args: []string{reason}}
-}
-
 // AddHandler registers a function to be called on every message the Client
 // sees.
 func (c *Client) AddHandler(f func(irc.Message)) {
@@ -231,6 +226,8 @@ func (c *Client) AddHandler(f func(irc.Message)) {
 
 // Close cleans up the Client.
 func (c *Client) Close() error {
+	c.eventChan <- event{kind: quitCommand, args: []string{"Bye"}}
+
 	close(c.doneChan)
 	c.wg.Wait()
 

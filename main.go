@@ -84,7 +84,6 @@ func main() {
 		log.Printf("%+v", errors.Wrap(err, "error closing session"))
 	}
 
-	ircClient.Quit("bye")
 	if err := ircClient.Close(); err != nil {
 		log.Printf("%+v", err)
 	}
