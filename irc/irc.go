@@ -234,14 +234,10 @@ func (c *Client) Close() error {
 	close(c.doneChan)
 	c.wg.Wait()
 
-	c.rw = nil
-
 	if c.conn != nil {
 		if err := c.conn.Close(); err != nil {
-			c.conn = nil
 			return errors.Wrap(err, "error closing connection")
 		}
-		c.conn = nil
 	}
 
 	return nil
