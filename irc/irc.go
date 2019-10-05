@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/horgh/irc"
@@ -17,161 +15,153 @@ import (
 // New creates a new Client.
 func New(nick, host string, port int, tls bool) *Client {
 	return &Client{
-		doneChan:  make(chan struct{}),
 		eventChan: make(chan event, 100), // 100 is arbitrary.
 		host:      host,
 		nick:      nick,
 		port:      port,
 		tls:       tls,
-		writeChan: make(chan irc.Message, 100), // 100 is arbitrary.
 	}
 }
 
 // Client is an IRC client.
 type Client struct {
-	conn      net.Conn
-	doneChan  chan struct{}
+	channels  []string
 	eventChan chan event
 	handlers  []func(irc.Message)
 	host      string
 	nick      string
 	port      int
-	rw        *bufio.ReadWriter
 	tls       bool
-	wg        sync.WaitGroup
-	writeChan chan irc.Message
 }
 
 type event struct {
-	args    []string
-	kind    kind
-	message irc.Message
+	args []string
+	kind kind
 }
 
 type kind int
 
 const (
-	readMessage kind = iota
-	joinCommand
+	joinCommand kind = iota
 	messageCommand
 	quitCommand
 )
 
 // Start starts the Client.
 func (c *Client) Start() error {
-	if err := c.connect(); err != nil {
-		return err
-	}
-
-	c.wg.Add(1)
 	go c.run()
 	return nil
 }
 
-func (c *Client) connect() error {
-	if c.tls {
-		conn, err := tls.Dial("tcp", fmt.Sprintf("%s:%d", c.host, c.port), nil)
-		if err != nil {
-			return errors.Wrap(err, "error connecting")
+func (c *Client) run() {
+	var conn *conn
+	for {
+		if conn == nil {
+			conn2, err := newConn(c)
+			if err != nil {
+				log.Printf("error connecting: %s", err)
+				time.Sleep(10 * time.Second)
+				continue
+			}
+			conn = conn2
 		}
-		c.conn = conn
-	} else {
-		conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", c.host, c.port))
-		if err != nil {
-			return errors.Wrap(err, "error connecting")
+
+		select {
+		case e := <-c.eventChan:
+			switch e.kind {
+			case joinCommand:
+				conn.writeChan <- irc.Message{
+					Command: "JOIN",
+					Params:  []string{e.args[0]},
+				}
+			case messageCommand:
+				conn.writeChan <- irc.Message{
+					Command: "PRIVMSG",
+					Params:  e.args,
+				}
+			case quitCommand:
+				conn.writeChan <- irc.Message{
+					Command: "QUIT",
+					Params:  e.args,
+				}
+			}
+		case m, ok := <-conn.readChan:
+			if !ok {
+				close(conn.writeChan)
+				_ = conn.conn.Close()
+				conn = nil
+				break
+			}
+			if m.Command == "PING" {
+				conn.writeChan <- irc.Message{
+					Command: "PONG",
+					Params:  []string{m.Params[0]},
+				}
+			}
+			for _, f := range c.handlers {
+				f(m)
+			}
 		}
-		c.conn = conn
 	}
-	c.rw = bufio.NewReadWriter(bufio.NewReader(c.conn), bufio.NewWriter(c.conn))
+}
 
-	c.wg.Add(1)
-	go c.reader()
-	c.wg.Add(1)
-	go c.writer()
+type conn struct {
+	conn      net.Conn
+	readChan  chan irc.Message
+	rw        *bufio.ReadWriter
+	writeChan chan irc.Message
+}
 
-	c.writeChan <- irc.Message{
+func newConn(c *Client) (*conn, error) {
+	conn := &conn{
+		readChan:  make(chan irc.Message, 100), // 100 is arbitrary
+		writeChan: make(chan irc.Message, 100), // 100 is arbitrary
+	}
+	if c.tls {
+		conn2, err := tls.Dial("tcp", fmt.Sprintf("%s:%d", c.host, c.port), nil)
+		if err != nil {
+			return nil, errors.Wrap(err, "error connecting")
+		}
+		conn.conn = conn2
+	} else {
+		conn2, err := net.Dial("tcp", fmt.Sprintf("%s:%d", c.host, c.port))
+		if err != nil {
+			return nil, errors.Wrap(err, "error connecting")
+		}
+		conn.conn = conn2
+	}
+	conn.rw = bufio.NewReadWriter(
+		bufio.NewReader(conn.conn),
+		bufio.NewWriter(conn.conn),
+	)
+
+	go conn.reader()
+	go conn.writer()
+
+	conn.writeChan <- irc.Message{
 		Command: "NICK",
 		Params:  []string{c.nick},
 	}
-	c.writeChan <- irc.Message{
+	conn.writeChan <- irc.Message{
 		Command: "USER",
 		Params:  []string{c.nick, "0", "*", c.nick},
 	}
-
-	return nil
-}
-
-func (c *Client) run() {
-	defer func() { c.wg.Done() }()
-
-	for {
-		e := <-c.eventChan
-
-		if e.kind == readMessage {
-			if e.message.Command == "PING" {
-				c.writeChan <- irc.Message{
-					Command: "PONG",
-					Params:  []string{e.message.Params[0]},
-				}
-				continue
-			}
-
-			for _, f := range c.handlers {
-				f(e.message)
-			}
-			continue
-		}
-
-		if e.kind == joinCommand {
-			c.writeChan <- irc.Message{
-				Command: "JOIN",
-				Params:  []string{e.args[0]},
-			}
-			continue
-		}
-
-		if e.kind == messageCommand {
-			c.writeChan <- irc.Message{
-				Command: "PRIVMSG",
-				Params:  e.args,
-			}
-			continue
-		}
-
-		if e.kind == quitCommand {
-			c.writeChan <- irc.Message{
-				Command: "QUIT",
-				Params:  e.args,
-			}
-			close(c.writeChan)
-			break
+	for _, channel := range c.channels {
+		conn.writeChan <- irc.Message{
+			Command: "JOIN",
+			Params:  []string{channel},
 		}
 	}
+
+	return conn, nil
 }
 
-func (c *Client) reader() {
-	defer func() { c.wg.Done() }()
-
+func (c *conn) reader() {
 	for {
-		select {
-		case <-c.doneChan:
-			return
-		default:
-		}
-
-		if err := c.conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-			log.Printf("%s", errors.Wrap(err, "error setting deadline"))
-			// XXX send event so we reconnect
-			return
-		}
-
 		line, err := c.rw.ReadString('\n')
 		if err != nil {
-			if strings.Contains(err.Error(), "i/o timeout") {
-				continue
-			}
 			log.Printf("%s", errors.Wrap(err, "error reading"))
-			// XXX send event so we reconnect
+			close(c.readChan)
 			return
 		}
 
@@ -181,13 +171,11 @@ func (c *Client) reader() {
 			continue
 		}
 
-		c.eventChan <- event{kind: readMessage, message: m}
+		c.readChan <- m
 	}
 }
 
-func (c *Client) writer() {
-	defer func() { c.wg.Done() }()
-
+func (c *conn) writer() {
 	for {
 		m, ok := <-c.writeChan
 		if !ok {
@@ -217,6 +205,7 @@ func (c *Client) writer() {
 // Join tells the Client to join the channel.
 func (c *Client) Join(channel string) {
 	c.eventChan <- event{kind: joinCommand, args: []string{channel}}
+	c.channels = append(c.channels, channel)
 }
 
 // Message sends a message to the target.
@@ -234,14 +223,7 @@ func (c *Client) AddHandler(f func(irc.Message)) {
 func (c *Client) Close() error {
 	c.eventChan <- event{kind: quitCommand, args: []string{"Bye"}}
 
-	close(c.doneChan)
-	c.wg.Wait()
-
-	if c.conn != nil {
-		if err := c.conn.Close(); err != nil {
-			return errors.Wrap(err, "error closing connection")
-		}
-	}
+	time.Sleep(time.Second) // Let writer send quit
 
 	return nil
 }
