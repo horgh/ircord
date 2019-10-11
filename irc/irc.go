@@ -184,10 +184,28 @@ func (c *Client) Join(channel string) {
 
 // Message sends a message to the target.
 func (c *Client) Message(to, message string) {
-	c.messageChan <- irc.Message{
-		Command: "PRIVMSG",
-		Params:  []string{to, message},
+	sz := 400
+	for _, line := range splitMessage(message, sz) {
+		c.messageChan <- irc.Message{
+			Command: "PRIVMSG",
+			Params:  []string{to, line},
+		}
 	}
+}
+
+func splitMessage(m string, sz int) []string {
+	if sz <= 0 {
+		sz = len(m)
+	}
+	var pieces []string
+	for i := 0; i < len(m); i += sz {
+		end := i + sz
+		if end > len(m) {
+			end = len(m)
+		}
+		pieces = append(pieces, m[i:end])
+	}
+	return pieces
 }
 
 // AddHandler registers a function to be called on every message the Client
