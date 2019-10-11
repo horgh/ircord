@@ -41,12 +41,12 @@ func main() {
 		log.Fatalf("%+v", errors.New("you must set a token"))
 	}
 
-	s, err := discordgo.New("Bot " + token)
+	d, err := discordgo.New("Bot " + token)
 	if err != nil {
 		log.Fatalf("%+v", errors.Wrap(err, "error creating client"))
 	}
 
-	discordChannel, err := getDiscordChannel(s, *discordChannelStr)
+	discordChannel, err := getDiscordChannel(d, *discordChannelStr)
 	if err != nil {
 		log.Fatalf("%+v", err)
 	}
@@ -58,27 +58,25 @@ func main() {
 		discordChannel: discordChannel,
 		ircChannel:     *ircChannel,
 		ircClient:      ircClient,
-		session:        s,
+		session:        d,
 		users:          map[string]*discordgo.User{},
 	}
 
+	d.AddHandler(ircord.messageCreate)
 	ircClient.AddHandler(ircord.ircMessage)
 
-	ircClient.Start()
-
-	ircClient.Join(*ircChannel)
-
-	s.AddHandler(ircord.messageCreate)
-
-	if err := s.Open(); err != nil {
+	if err := d.Open(); err != nil {
 		log.Fatalf("%+v", errors.Wrap(err, "error connecting"))
 	}
+
+	ircClient.Start()
+	ircClient.Join(*ircChannel)
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-ch
 
-	if err := s.Close(); err != nil {
+	if err := d.Close(); err != nil {
 		log.Printf("%+v", errors.Wrap(err, "error closing session"))
 	}
 
